@@ -18,6 +18,19 @@
 - [x] 强大的覆写功能，任意修订配置文件
 - [x] 深度集成 Sub-Store，轻松管理订阅
 
+## 自定义订阅 DNS 接管
+
+此分支在“订阅管理 → 编辑信息”中增加 **当前订阅不接管 DNS**，本地和远程订阅均可设置。
+
+- 默认关闭，沿用应用的全局“接管 DNS 设置”。已有订阅无需迁移。
+- 开启后，仅此订阅跳过应用的 DNS 和 hosts 合并及 DNS 清理，保留订阅和覆写生成的配置。订阅信息中的 `disableDnsControl` 会随订阅更新保留。
+- 保持全局接管开启，即可让 MESL 等指定订阅使用专属 DNS 覆写，其他订阅继续使用应用的公共 DNS。全局接管关闭时，所有订阅仍不接管。
+- 保存当前使用的订阅会重启内核并立即生效；其他订阅在切换使用时生效。此选项不删除应用保存的公共 DNS 和 hosts 设置。
+- 不接管时侧栏 DNS 模块保留并置灰，开关显示关闭，不可操作或点击切换页面，悬停可查看原因。开启虚拟网卡时，接管中的 DNS 保持启用且不可关闭，仍可进入 DNS 设置页面。此选项控制应用是否覆盖 DNS 配置，不改变 TUN 或系统 DNS 的设置方式。
+- DNS 和 Sub-Store 入口的显示方式由“应用设置 → 侧边栏设置”控制，关闭功能不会自动隐藏入口。Sub-Store 关闭时模块置灰且不可点击，悬停提示可在应用设置中开启；点击禁用模块不会切换右侧内容。
+
+关闭订阅中的此选项并保存，即可恢复遵循全局接管设置。专属 DNS 覆写应只绑定到对应订阅；全局覆写仍按原顺序执行。
+
 ## 开发
 
 本项目为自用，绝大部分 pr 可能都不会合并，你可以自行 fork 修改。
@@ -122,6 +135,7 @@ sparkle/
 - `pnpm typecheck` - TypeScript 类型检查
 - `pnpm typecheck:node` - 主进程类型检查
 - `pnpm typecheck:web` - 渲染进程类型检查
+- `pnpm test:profile-dns` - 验证按订阅接管 DNS、配置切换与订阅更新（隔离临时配置，不启动内核）
 - `pnpm lint` - 运行代码检查
 - `pnpm format` - 格式化代码
 
@@ -133,7 +147,7 @@ sparkle/
 
 #### 其他命令
 
-- `pnpm prepare` - 准备构建环境
+- `pnpm prepare` - 下载构建所需的内核、启动辅助程序及其他资源，可通过 `--x64` 或 `--arm64` 指定目标架构
 - `pnpm postinstall` - 安装 Electron 依赖
 
 ### 构建发布
@@ -144,9 +158,22 @@ sparkle/
 
 **Windows 构建：**
 
+在 Windows 环境的项目根目录中依次执行，确认每一步成功后再继续：
+
 ```bash
+pnpm install
+pnpm prepare
 pnpm build:win
 ```
+
+`pnpm prepare` 会下载内核和辅助资源到 `extra/`，默认使用当前 Node.js 的架构。执行前确认环境变量 `SKIP_PREPARE` 未设置为 `1`；如果下载失败，应先处理错误并重新执行，资源准备成功后再打包。
+
+`pnpm build:win` 只执行编译和打包，不会自动补齐缺失的资源。即使 `pnpm dev` 能打开窗口，也需要确认以下文件已存在：
+
+- `extra/files/sparkle-run.exe`
+- `extra/files/sparkle-service.exe`
+- `extra/sidecar/mihomo.exe`
+- `extra/sidecar/mihomo-alpha.exe`
 
 **macOS 构建：**
 
@@ -176,8 +203,17 @@ pnpm build:linux
 
 **指定架构：**
 
+Windows 的资源准备架构必须与打包架构一致；切换架构时需要重新执行 `pnpm prepare`。按目标架构选择对应命令：
+
 ```bash
-pnpm build:win --x64/--arm64
+# Windows x64
+pnpm prepare --x64
+pnpm build:win --x64
+
+# Windows ARM64
+pnpm prepare --arm64
+pnpm build:win --arm64
+
 pnpm build:mac --arm64/--x64
 pnpm build:linux --x64/--arm64
 ```
@@ -193,6 +229,7 @@ pnpm build:mac pkg/dmg
 **指定架构和产物类型：**
 
 ```bash
+pnpm prepare --x64
 pnpm build:win 7z --x64
 pnpm build:mac pkg --arm64
 pnpm build:linux deb --x64
@@ -204,7 +241,15 @@ pnpm build:linux deb --x64
 - **macOS**: `.pkg` 安装包
 - **Linux**: `.deb`、`.rpm`、`.pkg.tar.zst(pacman)` 等格式
 
+Windows 产物位于 `dist/`。安装前检查 `dist/win-unpacked/resources/`，其中应包含 `files/sparkle-run.exe`、`files/sparkle-service.exe`、`sidecar/mihomo.exe` 和 `sidecar/mihomo-alpha.exe`。资源缺失时应重新准备并打包，不要继续使用该安装包。
+
 ### 常见问题
+
+#### Windows 安装后无法打开，但开发模式正常
+
+先检查安装目录的 `resources/files/` 和 `resources/sidecar/` 是否包含上述启动辅助程序及内核。安装版会在创建窗口前使用 `sparkle-run.exe` 准备提权启动；缺少该文件时可能直接退出，而 `pnpm dev` 会跳过这段提权流程，因此开发窗口能打开并不能证明安装包完整。
+
+如果资源缺失，按“构建发布”中的 Windows 步骤重新执行 `pnpm prepare` 和 `pnpm build:win`，指定架构时保持两者一致。确认新产物包含所需资源后，再使用新安装包安装并验证启动。
 
 #### 包管理器要求
 
