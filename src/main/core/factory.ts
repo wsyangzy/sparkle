@@ -17,6 +17,7 @@ import {
 import { parseYaml, stringifyYaml } from '../utils/yaml'
 import { copyFile, mkdir, readdir, writeFile } from 'fs/promises'
 import { deepMerge } from '../utils/merge'
+import { isDnsControlled } from '../../shared/dns-control'
 import vm from 'vm'
 import { existsSync, writeFileSync } from 'fs'
 import path from 'path'
@@ -34,7 +35,8 @@ export async function generateProfile(): Promise<void> {
     getControledMihomoConfig()
   ])
   const { current } = profileConfig
-  const { diffWorkDir = false, controlDns = true, controlSniff = true } = appConfig
+  const { diffWorkDir = false, controlSniff = true } = appConfig
+  const controlDns = isDnsControlled(appConfig, profileConfig)
   const nextRawProfileStr = await getProfileStr(current)
   let currentProfileConfig = parseYaml<MihomoConfig>(nextRawProfileStr)
   if (typeof currentProfileConfig !== 'object') currentProfileConfig = {} as MihomoConfig
@@ -44,6 +46,7 @@ export async function generateProfile(): Promise<void> {
   overrideProfileStr = stringifyYaml(currentProfile)
 
   const configToMerge = JSON.parse(JSON.stringify(controledMihomoConfig))
+  // 按订阅跳过合并，保留应用保存的公共 DNS 设置供其他订阅使用。
   if (!controlDns) {
     delete configToMerge.dns
     delete configToMerge.hosts

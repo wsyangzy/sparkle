@@ -158,10 +158,14 @@ export default function SiderCards({
     }
 
     const target = event.target as HTMLElement
-    if (target.closest(interactiveSelector)) return
-
     const clickedCard = target.closest(siderCardSelector)
     if (!clickedCard) return
+    if (clickedCard.getAttribute('aria-disabled') === 'true') {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (target.closest(interactiveSelector)) return
 
     const route = Object.entries(siderCardRouteMap).find(([className]) =>
       clickedCard.classList.contains(className)

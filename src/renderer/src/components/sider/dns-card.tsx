@@ -8,6 +8,8 @@ import { patchMihomoConfig } from '@renderer/utils/ipc'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
+import { useProfileConfig } from '@renderer/hooks/use-profile-config'
+import { isDnsControlled } from '../../../../shared/dns-control'
 import React from 'react'
 import SiderItem from './sider-item'
 
@@ -17,17 +19,24 @@ interface Props {
 }
 const DNSCard: React.FC<Props> = (props) => {
   const { appConfig } = useAppConfig()
+  const { profileConfig } = useProfileConfig()
+  const controlDns = isDnsControlled(appConfig, profileConfig)
   const { iconOnly, expanded } = props
-  const {
-    dnsCardStatus = 'col-span-1',
-    controlDns = true,
-    disableAnimation = false
-  } = appConfig || {}
+  const { dnsCardStatus = 'col-span-1', disableAnimation = false } = appConfig || {}
   const location = useLocation()
-  const match = location.pathname.includes('/dns')
+  const match = controlDns && location.pathname.includes('/dns')
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { dns, tun } = controledMihomoConfig || {}
   const { enable = true } = dns || {}
+  const dnsEnabled = controlDns && enable
+  const dnsDisabled = !controlDns || Boolean(tun?.enable)
+  const disabledReason = !controlDns
+    ? appConfig?.controlDns === false
+      ? '全局 DNS 接管已关闭，当前使用订阅及覆写中的 DNS 配置'
+      : '当前订阅不接管 DNS，使用订阅及覆写中的 DNS 配置'
+    : tun?.enable
+      ? '虚拟网卡已开启，DNS 必须保持启用'
+      : undefined
   const {
     attributes,
     listeners,
@@ -36,29 +45,38 @@ const DNSCard: React.FC<Props> = (props) => {
     transition,
     isDragging
   } = useSortable({
-    id: 'dns'
+    id: 'dns',
+    disabled: !controlDns
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
   const onChange = async (enable: boolean): Promise<void> => {
+    if (dnsDisabled) return
     await patchControledMihomoConfig({ dns: { enable } })
     await patchMihomoConfig({ dns: { enable } })
   }
+  const dnsSwitch = (
+    <div className="flex items-center" title={disabledReason}>
+      <BorderSwitch
+        isShowBorder={match && dnsEnabled}
+        isSelected={dnsEnabled}
+        isDisabled={dnsDisabled}
+        onValueChange={onChange}
+      />
+    </div>
+  )
 
   if (iconOnly) {
     return (
       <SiderItem
-        className={`${dnsCardStatus} ${!controlDns ? 'hidden' : ''}`}
+        className={dnsCardStatus}
         title="DNS"
         route="/dns"
         icon={<LuServer className="text-[20px]" />}
         expanded={expanded}
+        isDisabled={!controlDns}
+        disabledReason={!controlDns ? disabledReason : undefined}
       >
-        <BorderSwitch
-          isShowBorder={match && enable}
-          isSelected={enable}
-          isDisabled={tun?.enable}
-          onValueChange={onChange}
-        />
+        {dnsSwitch}
       </SiderItem>
     )
   }
@@ -66,20 +84,23 @@ const DNSCard: React.FC<Props> = (props) => {
   return (
     <div
       ref={setNodeRef}
+      aria-disabled={!controlDns || undefined}
+      title={!controlDns ? disabledReason : undefined}
       style={{
         position: 'relative',
         transform: CSS.Transform.toString(transform),
         transition,
         zIndex: isDragging ? 'calc(infinity)' : undefined
       }}
-      className={`${dnsCardStatus} ${!controlDns ? 'hidden' : ''} dns-card`}
+      className={`${dnsCardStatus} dns-card ${!controlDns ? 'cursor-not-allowed opacity-50' : ''}`}
     >
       <Card
         {...attributes}
         {...listeners}
+        tabIndex={!controlDns ? -1 : 0}
         className={[
           'w-full',
-          `${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? `${disableAnimation ? '' : 'scale-[0.95]'} tap-highlight-transparent` : ''}`
+          `${match ? 'bg-primary' : controlDns ? 'hover:bg-primary/30' : ''} ${isDragging ? `${disableAnimation ? '' : 'scale-[0.95]'} tap-highlight-transparent` : ''}`
         ]
           .filter(Boolean)
           .join(' ')}
@@ -96,12 +117,7 @@ const DNSCard: React.FC<Props> = (props) => {
                 className={`${match ? 'text-primary-foreground' : 'text-foreground'} text-[24px] font-bold`}
               />
             </Button>
-            <BorderSwitch
-              isShowBorder={match && enable}
-              isSelected={enable}
-              isDisabled={tun?.enable}
-              onValueChange={onChange}
-            />
+            {dnsSwitch}
           </div>
         </Card.Content>
         <Card.Footer className="pt-1">

@@ -7,6 +7,8 @@ import EditableList from '@renderer/components/base/base-list-editor'
 import AdvancedDnsSetting from '@renderer/components/dns/advanced-dns-setting'
 import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-config'
 import { useAppConfig } from '@renderer/hooks/use-app-config'
+import { useProfileConfig } from '@renderer/hooks/use-profile-config'
+import { isDnsControlled } from '../../../shared/dns-control'
 import { restartCore } from '@renderer/utils/ipc'
 import React, { Key, useState } from 'react'
 import { notify } from '@renderer/utils/notification'
@@ -20,6 +22,8 @@ import {
 const DNS: React.FC = () => {
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { appConfig, patchAppConfig } = useAppConfig()
+  const { profileConfig } = useProfileConfig()
+  const controlDns = isDnsControlled(appConfig, profileConfig)
   const { hosts } = appConfig || {}
   const { dns } = controledMihomoConfig || {}
   const {
@@ -95,6 +99,7 @@ const DNS: React.FC = () => {
   }
 
   const onSave = async (patch: Partial<MihomoConfig>): Promise<void> => {
+    if (!controlDns) return
     await patchAppConfig({
       hosts: values.hosts
     })
@@ -105,6 +110,25 @@ const DNS: React.FC = () => {
     } catch (e) {
       notify(e, { variant: 'danger' })
     }
+  }
+
+  if (!controlDns) {
+    return (
+      <BasePage title="DNS 设置">
+        <SettingCard>
+          <div role="status" className="space-y-2 px-2 py-3">
+            <p className="font-medium">
+              {appConfig?.controlDns === false ? '全局 DNS 接管已关闭' : '当前订阅不接管 DNS'}
+            </p>
+            <p className="text-sm text-foreground/60">
+              当前使用订阅及覆写中的 DNS 和 hosts 配置，请在对应订阅或覆写中修改。
+              如需使用应用的公共 DNS 设置，请开启全局“接管 DNS 设置”，并关闭此订阅的“当前订阅不接管
+              DNS”选项。
+            </p>
+          </div>
+        </SettingCard>
+      </BasePage>
+    )
   }
 
   return (

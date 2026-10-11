@@ -174,6 +174,7 @@ interface ProfileItem {
   home?: string
   updated?: number
   override?: string[]
+  disableDnsControl?: boolean
   useProxy?: boolean
   ageRecipient?: string
   ageIdentity?: string
