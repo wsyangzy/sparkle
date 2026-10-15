@@ -132,7 +132,7 @@ runs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v7
       with:
-        name: package-${{ runner.os }}-${{ inputs.arch }}${{ inputs.format && '-' || '' }}${{ inputs.format || '' }}
+        name: sparkle-${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'macos' || 'linux' }}-${{ inputs.version }}-${{ inputs.arch }}-${{ inputs.format == 'nsis' && 'setup' || inputs.format == '7z' && 'portable' || inputs.format || 'pkg' }}
         path: |
           dist/sparkle*
           !dist/sparkle.app.plist

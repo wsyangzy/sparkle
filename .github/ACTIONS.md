@@ -19,7 +19,8 @@
 - macOS x64 / arm64：PKG，共 2 个包。
 - Linux x64 / arm64 / loong64：DEB、RPM、Pacman，共 9 个包。
 - 汇总时核对 15 个包的文件名与非空状态，拒绝缺包、额外文件和空包，再生成 `latest.yml`、`release.json`、`checksums.txt`，并验证 SHA-256。
-- 每个矩阵 job 保存 `package-*` artifact；完整产物保存在 `release-bundle`，内含 `release-assets/` 和 `release-notes.md`，保留 14 天。
+- 每个矩阵 job 保存 `sparkle-平台-版本-架构-类型` artifact，例如 `sparkle-windows-1.26.9-x64-setup`、`sparkle-windows-1.26.9-x64-portable`、`sparkle-linux-1.26.9-x64-deb` 和 `sparkle-macos-1.26.9-arm64-pkg`。Windows 类型使用 `setup` / `portable`，Linux 类型使用 `deb` / `rpm` / `pacman`。
+- 从 Actions 页面下载时，外层 ZIP 使用 artifact 名称，里面保留实际安装包文件名；Releases 直接提供实际安装包。完整产物保存在 `release-bundle`，内含 `release-assets/` 和 `release-notes.md`，保留 14 天。
 - 使用 `ELECTRON_INSTALL_ARCH` 显式传递目标架构，避免 pnpm 生命周期移除 `npm_config_arch` 后误下载宿主机架构的 Electron，涵盖 loong64 与 ARM64 等交叉打包。
 - 正式标签必须与源码 `package.json.version` 完全对应，例如 `1.27.0` 对应 `v1.27.0` 或 `1.27.0`。标签不会修改或提交源码版本。
 - Nightly 使用下一 patch 的预发布版本，如 `1.26.10-nightly.20261015180000.123.1`。时间、运行序号和重试次数区分同一天的多次构建。

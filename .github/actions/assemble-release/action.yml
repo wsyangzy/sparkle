@@ -40,7 +40,7 @@ runs:
       shell: bash
     - uses: actions/download-artifact@v8
       with:
-        pattern: package-*
+        pattern: sparkle-*
         path: release-assets
         merge-multiple: true
     - name: Generate release notes and validate all packages
