@@ -37,8 +37,8 @@
 
 ### 环境要求
 
-- **Node.js**: >= 20.0.0 (推荐使用 LTS 版本)
-- **pnpm**: >= 9.0.0 (必需)
+- **Node.js**: 24 LTS（构建脚本直接运行 TypeScript）
+- **pnpm**: 使用 `package.json` 的 `packageManager` 固定版本（当前为 11.1.1）
 - **Git**: 最新版本
 
 ### 技术架构
@@ -137,6 +137,8 @@ sparkle/
 - `pnpm typecheck:web` - 渲染进程类型检查
 - `pnpm test:profile-dns` - 验证按订阅接管 DNS、配置切换与订阅更新（隔离临时配置，不启动内核）
 - `pnpm lint` - 运行代码检查
+- `pnpm lint:check` - 只检查代码，不自动修改文件，用于 CI
+- `pnpm test` - 运行全部测试，包含订阅 DNS、发布版本、产物完整性与更新来源
 - `pnpm format` - 格式化代码
 
 #### 构建命令
@@ -151,6 +153,8 @@ sparkle/
 - `pnpm postinstall` - 安装 Electron 依赖
 
 ### 构建发布
+
+GitHub Actions 提供独立 CI、标签触发的 Draft Release，以及每天北京时间 02:00 的 Nightly。正式发布和 Nightly 复用完整跨平台打包与 SHA-256 校验；手动执行 Release 仅生成 artifacts。触发方式、版本要求、更新通道和启用步骤见 [Actions 说明](.github/ACTIONS.md)。
 
 #### 环境准备
 

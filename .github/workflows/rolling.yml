@@ -1,92 +1,49 @@
 name: Rolling
 
+# Compatibility entry point for the existing rolling update channel.
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Target release tag'
-        required: true
-        default: rolling
-        type: string
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - 'README.md'
-      - '.github/ISSUE_TEMPLATE/**'
-      - '.github/workflows/issues.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: rolling
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  prepare:
+  plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Determine Target Tag
-        id: tag
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - id: version
         env:
-          INPUT_TAG: ${{ inputs.tag }}
-        shell: bash
-        run: |
-          TAG=${INPUT_TAG:-rolling}
-          git check-ref-format "refs/tags/$TAG"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          BUILD_CHANNEL: rolling
+        run: node scripts/release-version.mjs
+
+  checks:
+    needs: plan
+    uses: ./.github/workflows/ci.yml
 
   build:
-    needs: [prepare]
+    needs: [plan, checks]
     uses: ./.github/workflows/build.yml
     with:
       channel: rolling
-      release_tag: ${{ needs.prepare.outputs.tag }}
+      version: ${{ needs.plan.outputs.version }}
 
   publish:
-    needs: [prepare, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Download Artifacts
-        uses: actions/download-artifact@v7
-        with:
-          path: bin/
-          merge-multiple: true
-
-      - name: Delete Current Rolling Assets
-        uses: 8Mi-Tech/delete-release-assets-action@main
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ needs.prepare.outputs.tag }}
-          deleteOnlyFromDrafts: false
-
-      - name: Move Rolling Tag
-        uses: richardsimko/update-tag@v1
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish Rolling Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Rolling
-          body_path: bin/changelog.md
-          files: |
-            bin/latest.yml
-            bin/dist/*
-          prerelease: true
-
-  aur:
-    if: needs.prepare.outputs.tag == 'rolling'
-    needs: [prepare, publish]
-    uses: ./.github/workflows/aur.yml
-    secrets:
-      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    needs: [plan, build]
+    uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: write
+    with:
+      channel: rolling
+      version: ${{ needs.plan.outputs.version }}
+      tag: rolling

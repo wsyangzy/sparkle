@@ -75,6 +75,7 @@ jobs:
               -e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${arm64_sha256}')/" \
               "$pkgbuild"
           else
+            # shellcheck source=/dev/null
             pkgver=$(source "$pkgbuild"; printf '%s' "$pkgver")
           fi
 

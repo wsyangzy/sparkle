@@ -19,23 +19,18 @@ import {
 } from '../service/fallback'
 import { appendAppLog } from '../utils/log'
 import { systemCoreOnlyBuild } from '../../shared/build-flags'
+import {
+  releaseBaseUrl,
+  releaseRepository,
+  resolveAppReleaseTag,
+  updateManifestUrls
+} from '../../shared/release-config'
 
 let downloadCancelToken: CancelTokenSource | null = null
 const WINDOWS_INSTALLER_MIN_TEMP_SPACE_BYTES = 1024 * 1024 * 1024
-const UPDATE_MANIFEST_URLS: Record<AppUpdateChannel, string> = {
-  stable: 'https://github.com/xishang0128/sparkle/releases/latest/download/latest.yml',
-  rolling: 'https://github.com/xishang0128/sparkle/releases/download/rolling/latest.yml'
-}
-
 function getGitHubAuthHeaders(token?: string): Record<string, string> {
   const normalizedToken = token?.trim()
   return normalizedToken ? { Authorization: `Bearer ${normalizedToken}` } : {}
-}
-
-function resolveReleaseTag(version: string, tag?: string): string {
-  if (tag) return tag
-  if (version.includes('-rolling-')) return 'rolling'
-  return version
 }
 
 async function ensureFreeSpace(dir: string, requiredBytes: number, message: string): Promise<void> {
@@ -51,7 +46,7 @@ async function ensureFreeSpace(dir: string, requiredBytes: number, message: stri
 export async function checkUpdate(): Promise<AppVersion | undefined> {
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
   const { updateChannel = 'stable', githubToken } = await getAppConfig()
-  const url = UPDATE_MANIFEST_URLS[updateChannel]
+  const url = updateManifestUrls[updateChannel]
   const res = await axios.get(url, {
     headers: {
       'Content-Type': 'application/octet-stream',
@@ -117,8 +112,8 @@ export async function downloadAndInstallUpdate(version: string, tag?: string): P
   }
   const { 'mixed-port': mixedPort = 7890 } = await getControledMihomoConfig()
   const { githubToken } = await getAppConfig()
-  const releaseTag = resolveReleaseTag(version, tag)
-  const baseUrl = `https://github.com/xishang0128/sparkle/releases/download/${releaseTag}/`
+  const releaseTag = resolveAppReleaseTag(version, tag)
+  const baseUrl = `${releaseBaseUrl}/download/${releaseTag}/`
   const fileMap: Record<string, string> = {
     'win32-x64': `sparkle-windows-${version}-x64-setup.exe`,
     'win32-arm64': `sparkle-windows-${version}-arm64-setup.exe`,
@@ -134,7 +129,7 @@ export async function downloadAndInstallUpdate(version: string, tag?: string): P
   }
   downloadCancelToken = axios.CancelToken.source()
 
-  const apiUrl = `https://api.github.com/repos/xishang0128/sparkle/releases/tags/${releaseTag}`
+  const apiUrl = `https://api.github.com/repos/${releaseRepository}/releases/tags/${releaseTag}`
   const apiRequestConfig: AxiosRequestConfig = {
     headers: {
       Accept: 'application/vnd.github.v3+json',

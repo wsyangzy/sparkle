@@ -1,5 +1,15 @@
 import path from 'path'
 
+export const releaseRepository =
+  process.env.SPARKLE_RELEASE_REPOSITORY?.trim() || 'xishang0128/sparkle'
+export const prereleaseTag = process.env.SPARKLE_PRERELEASE_TAG?.trim() || 'rolling'
+if (!/^[\w.-]+\/[\w.-]+$/.test(releaseRepository)) {
+  throw new Error('SPARKLE_RELEASE_REPOSITORY must be owner/repository')
+}
+if (!['nightly', 'rolling'].includes(prereleaseTag)) {
+  throw new Error('SPARKLE_PRERELEASE_TAG must be nightly or rolling')
+}
+
 const systemCoreBuildValue = process.env.SPARKLE_SYSTEM_CORE?.trim() || ''
 const configuredSystemCorePath =
   systemCoreBuildValue === '1' ? '/usr/bin/mihomo' : systemCoreBuildValue
