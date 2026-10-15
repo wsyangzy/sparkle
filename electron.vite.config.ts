@@ -2,9 +2,17 @@ import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { systemCoreDefaultPath, systemCoreOnlyBuild, systemServicePath } from './scripts/build-env'
+import {
+  systemCoreDefaultPath,
+  systemCoreOnlyBuild,
+  systemServicePath,
+  releaseRepository,
+  prereleaseTag
+} from './scripts/build-env'
 
 const buildDefines = {
+  __SPARKLE_RELEASE_REPOSITORY__: JSON.stringify(releaseRepository),
+  __SPARKLE_PRERELEASE_TAG__: JSON.stringify(prereleaseTag),
   __SPARKLE_SYSTEM_CORE_PATH__: JSON.stringify(systemCoreDefaultPath),
   __SPARKLE_SYSTEM_SERVICE_PATH__: JSON.stringify(systemServicePath)
 }

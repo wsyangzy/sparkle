@@ -22,7 +22,8 @@ const SubStoreCard: React.FC<Props> = (props) => {
     disableAnimation = false
   } = appConfig || {}
   const location = useLocation()
-  const match = location.pathname.includes('/substore')
+  const match = useSubStore && location.pathname.includes('/substore')
+  const disabledReason = !useSubStore ? 'Sub-Store 已关闭，可在应用设置中开启' : undefined
   const {
     attributes,
     listeners,
@@ -31,18 +32,21 @@ const SubStoreCard: React.FC<Props> = (props) => {
     transition,
     isDragging
   } = useSortable({
-    id: 'substore'
+    id: 'substore',
+    disabled: !useSubStore
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
 
   if (iconOnly) {
     return (
       <SiderItem
-        className={`${substoreCardStatus} ${!useSubStore ? 'hidden' : ''}`}
+        className={substoreCardStatus}
         title="Sub-Store"
         route="/substore"
         icon={<SubStoreIcon className="text-[20px]" />}
         expanded={expanded}
+        isDisabled={!useSubStore}
+        disabledReason={disabledReason}
       />
     )
   }
@@ -50,20 +54,23 @@ const SubStoreCard: React.FC<Props> = (props) => {
   return (
     <div
       ref={setNodeRef}
+      aria-disabled={!useSubStore || undefined}
+      title={disabledReason}
       style={{
         position: 'relative',
         transform: CSS.Transform.toString(transform),
         transition,
         zIndex: isDragging ? 'calc(infinity)' : undefined
       }}
-      className={`${substoreCardStatus} ${!useSubStore ? 'hidden' : ''} substore-card`}
+      className={`${substoreCardStatus} substore-card ${!useSubStore ? 'cursor-not-allowed opacity-50' : ''}`}
     >
       <Card
         {...attributes}
         {...listeners}
+        tabIndex={!useSubStore ? -1 : 0}
         className={[
           'w-full',
-          `${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? `${disableAnimation ? '' : 'scale-[0.95]'} tap-highlight-transparent` : ''}`
+          `${match ? 'bg-primary' : useSubStore ? 'hover:bg-primary/30' : ''} ${isDragging ? `${disableAnimation ? '' : 'scale-[0.95]'} tap-highlight-transparent` : ''}`
         ]
           .filter(Boolean)
           .join(' ')}

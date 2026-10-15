@@ -1,0 +1,73 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 02:00 Asia/Shanghai
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Skip unchanged scheduled builds
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLISHED=''
+          if [[ "$EVENT_NAME" == schedule ]] && gh release download nightly --pattern release.json --dir "$RUNNER_TEMP/previous-nightly"; then
+            PUBLISHED=$(jq -r '.commit // empty' "$RUNNER_TEMP/previous-nightly/release.json")
+          fi
+          if [[ "$EVENT_NAME" == schedule && "$PUBLISHED" == "$GITHUB_SHA" ]]; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo 'No source changes since the last published build.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+      - id: version
+        if: steps.plan.outputs.build == 'true'
+        env:
+          BUILD_CHANNEL: nightly
+        run: node scripts/release-version.mjs
+
+  checks:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: [plan, checks]
+    uses: ./.github/workflows/build.yml
+    with:
+      channel: nightly
+      version: ${{ needs.plan.outputs.version }}
+
+  publish:
+    needs: [plan, build]
+    uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: write
+    with:
+      channel: nightly
+      version: ${{ needs.plan.outputs.version }}
+      tag: nightly

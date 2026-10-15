@@ -5,6 +5,7 @@ import { downloadAndInstallUpdate } from '@renderer/utils/ipc'
 import { platform } from '@renderer/utils/init'
 import { notify } from '@renderer/utils/notification'
 import { FiX, FiDownload } from 'react-icons/fi'
+import { releaseBaseUrl, resolveAppReleaseTag } from '../../../../shared/release-config'
 
 interface Props {
   version: string
@@ -81,8 +82,8 @@ const UpdaterDrawer: React.FC<Props> = (props) => {
   }
 
   const isDownloading = updateStatus?.downloading || downloading
-  const releaseTag = tag ?? (version.includes('-rolling-') ? 'rolling' : version)
-  const releaseUrl = `https://github.com/xishang0128/sparkle/releases/tag/${releaseTag}`
+  const releaseTag = resolveAppReleaseTag(version, tag)
+  const releaseUrl = `${releaseBaseUrl}/tag/${releaseTag}`
   const releaseLink = !isDownloading && (
     <Link
       className={

@@ -481,6 +481,43 @@ const EditInfoModal: React.FC<Props> = (props) => {
                       ) : undefined
                     }
                   )}
+                {renderField(
+                  '当前订阅不接管 DNS',
+                  <Switch
+                    aria-label="当前订阅不接管 DNS"
+                    size="sm"
+                    isSelected={values.disableDnsControl ?? false}
+                    onChange={(v) => {
+                      setValues({ ...values, disableDnsControl: v })
+                    }}
+                  >
+                    <Switch.Content>
+                      <Switch.Control>
+                        <Switch.Thumb />
+                      </Switch.Control>
+                    </Switch.Content>
+                  </Switch>,
+                  {
+                    actions: (
+                      <Tooltip delay={0}>
+                        <Tooltip.Trigger>
+                          <Button
+                            aria-label="订阅 DNS 接管说明"
+                            isIconOnly
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <IoIosHelpCircle className="text-lg" />
+                          </Button>
+                        </Tooltip.Trigger>
+                        <Tooltip.Content className="max-w-72">
+                          开启后，此订阅使用订阅及覆写中的 DNS 和 hosts 配置。 关闭后遵循全局“接管
+                          DNS 设置”，其他订阅不受影响。
+                        </Tooltip.Content>
+                      </Tooltip>
+                    )
+                  }
+                )}
                 {renderField('覆写', overrideContent, { align: 'start', divider: false })}
               </Surface>
             </Modal.Body>

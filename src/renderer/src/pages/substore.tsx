@@ -18,7 +18,7 @@ import { notify } from '@renderer/utils/notification'
 
 const SubStore: React.FC = () => {
   const { appConfig } = useAppConfig()
-  const { useCustomSubStore, customSubStoreUrl } = appConfig || {}
+  const { useSubStore = true, useCustomSubStore, customSubStoreUrl } = appConfig || {}
   const [backendPort, setBackendPort] = useState<number | undefined>()
   const [frontendPort, setFrontendPort] = useState<number | undefined>()
   const [isUpdating, setIsUpdating] = useState(false)
@@ -27,8 +27,11 @@ const SubStore: React.FC = () => {
     setFrontendPort(await subStoreFrontendPort())
   }
   useEffect(() => {
+    if (!useSubStore) return
     getPort()
-  }, [useCustomSubStore])
+  }, [useSubStore, useCustomSubStore])
+
+  if (!useSubStore) return null
 
   if (!useCustomSubStore && !backendPort) return null
   if (!frontendPort) return null

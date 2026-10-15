@@ -11,9 +11,12 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+    "lint:check": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
+    "test:profile-dns": "node --test scripts/profile-dns.test.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "ensure:electron": "node scripts/install-electron.ts",
     "prepare": "node scripts/prepare.ts",
     "updater": "node scripts/updater.ts",
@@ -21,6 +24,7 @@
     "telegram": "node scripts/telegram.ts",
     "dev": "pnpm run ensure:electron && electron-vite dev",
     "postinstall": "pnpm run ensure:electron && electron-builder install-app-deps",
+    "build": "electron-vite build",
     "build:win": "electron-vite build && electron-builder --publish never --win",
     "build:mac": "electron-vite build && electron-builder --publish never --mac",
     "build:linux": "electron-vite build && node scripts/package-linux.ts"

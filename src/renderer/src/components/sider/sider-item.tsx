@@ -8,6 +8,8 @@ interface Props {
   icon: ReactNode
   className?: string
   expanded?: boolean
+  isDisabled?: boolean
+  disabledReason?: string
   children?: ReactNode
 }
 
@@ -17,21 +19,26 @@ export default function SiderItem({
   icon,
   className = '',
   expanded = false,
+  isDisabled = false,
+  disabledReason,
   children
 }: Props): React.JSX.Element {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const active = pathname.includes(route)
+  const active = !isDisabled && pathname.includes(route)
 
   return (
     <div
       data-expanded={expanded}
-      className={`${className} sider-item mx-2 flex h-8 shrink-0 items-center rounded-lg ${active ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10'}`}
+      aria-disabled={isDisabled || undefined}
+      title={disabledReason}
+      className={`${className} sider-item mx-2 flex h-8 shrink-0 items-center rounded-lg ${isDisabled ? 'cursor-not-allowed' : active ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10'}`}
     >
       <Button
         size="sm"
         aria-label={title}
         aria-current={active ? 'page' : undefined}
+        isDisabled={isDisabled}
         onPress={() => navigate(route)}
         variant="ghost"
         className={`h-8 min-w-0 flex-1 justify-start gap-0 p-0 bg-transparent ${active ? 'text-primary-foreground' : ''}`}

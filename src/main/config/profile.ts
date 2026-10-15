@@ -97,7 +97,10 @@ export async function updateProfileItem(item: ProfileItem): Promise<void> {
 export async function addProfileItem(item: Partial<ProfileItem>): Promise<void> {
   const newItem = await createProfile(item)
   const config = await getProfileConfig()
-  if (await getProfileItem(newItem.id)) {
+  const existingItem = await getProfileItem(newItem.id)
+  if (existingItem) {
+    // 定时器或正在下载的更新可能携带旧选项，保留用户最新保存的 DNS 接管设置。
+    newItem.disableDnsControl = existingItem.disableDnsControl
     await updateProfileItem(newItem)
   } else {
     config.items.push(newItem)
@@ -154,6 +157,7 @@ export async function createProfile(item: Partial<ProfileItem>): Promise<Profile
     substore: item.substore || false,
     interval: item.interval || 0,
     override: item.override || [],
+    disableDnsControl: item.disableDnsControl ?? false,
     useProxy: item.useProxy || false,
     ageRecipient: item.ageRecipient?.trim() || undefined,
     ageIdentity: item.ageIdentity?.trim() || undefined,
