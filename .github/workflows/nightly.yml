@@ -1,17 +1,13 @@
 name: Nightly
-
 on:
   schedule:
-    - cron: '0 18 * * *' # 02:00 Asia/Shanghai
-  workflow_dispatch:
-
+    - cron: 0 18 * * *
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
   group: nightly
   cancel-in-progress: false
-
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -19,6 +15,7 @@ jobs:
     outputs:
       build: ${{ steps.plan.outputs.build }}
       version: ${{ steps.version.outputs.version }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,25 +46,67 @@ jobs:
         env:
           BUILD_CHANNEL: nightly
         run: node scripts/release-version.mjs
-
+      - name: Load package matrix
+        id: matrix
+        if: steps.plan.outputs.build == 'true'
+        shell: bash
+        run: |
+          echo "matrix=$(jq -c . .github/build-matrix.json)" >> "$GITHUB_OUTPUT"
   checks:
     needs: plan
     if: needs.plan.outputs.build == 'true'
     uses: ./.github/workflows/ci.yml
-
   build:
-    needs: [plan, checks]
-    uses: ./.github/workflows/build.yml
-    with:
-      channel: nightly
-      version: ${{ needs.plan.outputs.version }}
-
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}${{ matrix.format && '-' || '' }}${{ matrix.format || '' }}
+    if: needs.plan.outputs.build == 'true'
+    needs:
+      - plan
+      - checks
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/package
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          arch: ${{ matrix.arch }}
+          format: ${{ matrix.format || '' }}
+  assemble:
+    needs:
+      - plan
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      title: ${{ steps.assemble.outputs.title }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: assemble
+        uses: ./.github/actions/assemble-release
+        with:
+          channel: nightly
+          version: ${{ needs.plan.outputs.version }}
+          tag: nightly
   publish:
-    needs: [plan, build]
-    uses: ./.github/workflows/publish.yml
+    needs:
+      - plan
+      - assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
-    with:
-      channel: nightly
-      version: ${{ needs.plan.outputs.version }}
-      tag: nightly
+    concurrency:
+      group: publish-nightly
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/publish-release
+        with:
+          channel: nightly
+          tag: nightly
+          title: ${{ needs.assemble.outputs.title }}

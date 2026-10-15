@@ -1,0 +1,141 @@
+name: Package application
+description: Build one platform package and upload its artifact.
+inputs:
+  version:
+    description: Version computed by the release plan
+    required: true
+  arch:
+    description: Target architecture
+    required: true
+  format:
+    description: Package format (empty for macOS PKG)
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Configure build environment
+      shell: bash
+      env:
+        SPARKLE_RELEASE_REPOSITORY: ${{ github.repository }}
+        SPARKLE_PRERELEASE_TAG: nightly
+        # pnpm removes npm_config_arch from lifecycle scripts; use Electron's own override.
+        ELECTRON_INSTALL_ARCH: ${{ inputs.arch }}
+        ELECTRON_MIRROR: ${{ inputs.arch == 'loong64' && 'https://github.com/darkyzhou/electron-loong64/releases/download/' || 'https://github.com/electron/electron/releases/download/' }}
+        electron_use_remote_checksums: ${{ inputs.arch == 'loong64' && '1' || '' }}
+      run: |
+        {
+          echo "SPARKLE_RELEASE_REPOSITORY=$SPARKLE_RELEASE_REPOSITORY"
+          echo "SPARKLE_PRERELEASE_TAG=$SPARKLE_PRERELEASE_TAG"
+          echo "ELECTRON_INSTALL_ARCH=$ELECTRON_INSTALL_ARCH"
+          echo "ELECTRON_MIRROR=$ELECTRON_MIRROR"
+          echo "electron_use_remote_checksums=$electron_use_remote_checksums"
+        } >> "$GITHUB_ENV"
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: pnpm
+    - name: Stamp build version
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+      run: node scripts/release-version.mjs stamp
+      shell: bash
+    - name: Install Build Tools
+      if: runner.os == 'Linux' && inputs.format == 'pacman'
+      run: |
+        sudo apt-get update && sudo apt-get install -y libarchive-tools
+      shell: bash
+    - name: Adaptation to the loongarch64 architecture
+      env:
+        npm_config_arch: ${{ inputs.arch }}
+        npm_config_target_arch: ${{ inputs.arch }}
+      if: runner.os == 'Linux' && inputs.arch == 'loong64'
+      shell: bash
+      run: |
+        LOONGARCH_OVERRIDES=$(pnpm config get overrides --json | jq '. + {"electron": "42.3.0", "electron-builder": "npm:@loongdotjs/electron-builder@26.15.6"}')
+        pnpm config set --location=project --json overrides "$LOONGARCH_OVERRIDES"
+        pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+    - name: Install Dependencies and Prepare
+      env:
+        npm_config_arch: ${{ inputs.arch }}
+        npm_config_target_arch: ${{ inputs.arch }}
+      shell: bash
+      run: |
+        case "${{ runner.os }}-${{ inputs.arch }}" in
+          Windows-x64) PNPM_TARGET_FLAGS=(--os=current --os=win32 --cpu=current --cpu=x64); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-win32-x64-msvc" ;;
+          Windows-arm64) PNPM_TARGET_FLAGS=(--os=current --os=win32 --cpu=current --cpu=arm64); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-win32-arm64-msvc" ;;
+          Linux-x64) PNPM_TARGET_FLAGS=(--os=current --os=linux --cpu=current --cpu=x64 --libc=current --libc=glibc); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-linux-x64-gnu" ;;
+          Linux-arm64) PNPM_TARGET_FLAGS=(--os=current --os=linux --cpu=current --cpu=arm64 --libc=current --libc=glibc); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-linux-arm64-gnu" ;;
+          Linux-loong64) PNPM_TARGET_FLAGS=(--os=current --os=linux --cpu=current --cpu=loong64 --libc=current --libc=glibc); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-linux-loong64-gnu" ;;
+          macOS-x64) PNPM_TARGET_FLAGS=(--os=current --os=darwin --cpu=current --cpu=x64); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-darwin-x64" ;;
+          macOS-arm64) PNPM_TARGET_FLAGS=(--os=current --os=darwin --cpu=current --cpu=arm64); SPARKLE_NATIVE_PACKAGE="@uruhalushia/sparkle-native-darwin-arm64" ;;
+          *) echo "Unsupported native target: ${{ runner.os }}-${{ inputs.arch }}" && exit 1 ;;
+        esac
+
+        SKIP_PREPARE=1 pnpm install --frozen-lockfile "${PNPM_TARGET_FLAGS[@]}"
+
+        verify_native_package() {
+          node -e "require('node:module').createRequire(require.resolve(process.argv[1])).resolve(process.argv[2].trim() + '/package.json')" "$1" "$2"
+        }
+        ensure_native_package() {
+          local root_package="$1"
+          local native_package="$2"
+          if ! verify_native_package "$root_package" "$native_package"; then
+            local package_version
+            package_version=$(node -p "require('./node_modules/${root_package}/package.json').version")
+            SKIP_PREPARE=1 pnpm add "$native_package@$package_version" -D --ignore-scripts "${PNPM_TARGET_FLAGS[@]}"
+          fi
+        }
+        prune_native_packages() {
+          node -e "const fs=require('node:fs');const path=require('node:path');const root=process.argv[1].trim();const prefix=process.argv[2].trim();const target=process.argv[3].trim();const keep=target.split('/').pop();const base=path.dirname(path.dirname(require.resolve(root + '/package.json')));for(const name of fs.readdirSync(base)){if(name.startsWith(prefix)&&name!==keep)fs.rmSync(path.join(base,name),{recursive:true,force:true});}const store=path.join(process.cwd(),'node_modules','.pnpm');const storePrefix=root.replace('/','+')+'-';for(const name of fs.readdirSync(store)){if(name.startsWith(storePrefix)&&!name.startsWith(root.replace('/','+')+'-'+keep.slice(prefix.length)+'@'))fs.rmSync(path.join(store,name),{recursive:true,force:true});}" "$1" "$2" "$3"
+        }
+
+        ensure_native_package "@uruhalushia/sparkle-native" "$SPARKLE_NATIVE_PACKAGE"
+        prune_native_packages "@uruhalushia/sparkle-native" "sparkle-native-" "$SPARKLE_NATIVE_PACKAGE"
+        verify_native_package "@uruhalushia/sparkle-native" "$SPARKLE_NATIVE_PACKAGE" \
+          || (echo "Missing $SPARKLE_NATIVE_PACKAGE. pnpm must install cross-platform optional native dependencies." && exit 1)
+        pnpm prepare --${{ inputs.arch }}
+    - name: Build
+      env:
+        npm_config_arch: ${{ inputs.arch }}
+        npm_config_target_arch: ${{ inputs.arch }}
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          pnpm build:win ${{ inputs.format }} --${{ inputs.arch }}
+        elif [[ "${{ runner.os }}" == "Linux" ]]; then
+          if [[ "${{ inputs.arch }}" == "loong64" ]]; then
+            export ELECTRON_MIRROR="https://github.com/darkyzhou/electron-loong64/releases/download/"
+            export electron_use_remote_checksums=1
+            pnpm build:linux ${{ inputs.format }} --${{ inputs.arch }}
+          else
+            pnpm build:linux ${{ inputs.format }} --${{ inputs.arch }}
+          fi
+        else
+          pnpm build:mac --${{ inputs.arch }}
+        fi
+    - name: Add Portable Flag
+      if: runner.os == 'Windows' && inputs.format == '7z'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $archives = @(Get-ChildItem dist/*portable.7z)
+        if ($archives.Count -ne 1) { throw 'Expected exactly one portable archive' }
+        New-Item -Path "PORTABLE" -ItemType File
+        $archives | ForEach-Object {
+          7z a $_.FullName PORTABLE
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to add PORTABLE flag' }
+        }
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: package-${{ runner.os }}-${{ inputs.arch }}${{ inputs.format && '-' || '' }}${{ inputs.format || '' }}
+        path: |
+          dist/sparkle*
+          !dist/sparkle.app.plist
+          !dist/sparkle*blockmap*
+        if-no-files-found: error
+        retention-days: 14

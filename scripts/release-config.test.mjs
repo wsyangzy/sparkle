@@ -35,7 +35,7 @@ test('fork builds use one repository for stable, nightly and package release URL
   assert.equal(config.resolveAppReleaseTag('1.26.9'), '1.26.9')
 })
 
-test('the explicit Rolling entry keeps its existing update manifest route', () => {
+test('local builds retain the upstream rolling update manifest route', () => {
   const config = loadConfig('xishang0128/sparkle', 'rolling')
   assert.equal(
     config.updateManifestUrls.rolling,

@@ -1,24 +1,20 @@
 name: Release
-
 on:
   push:
     tags:
-      - 'v[0-9]*.[0-9]*.[0-9]*'
+      - v[0-9]*.[0-9]*.[0-9]*
       - '[0-9]*.[0-9]*.[0-9]*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Optional X.Y.Z version for artifact-only packaging (no tag or release is created)'
+        description: Optional X.Y.Z version for artifact-only packaging (no tag or release is created)
         required: false
         type: string
-
 permissions:
   contents: read
-
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -26,6 +22,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -37,26 +34,66 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           SOURCE_TAG: ${{ github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name || '' }}
         run: node scripts/release-version.mjs
-
+      - name: Load package matrix
+        id: matrix
+        shell: bash
+        run: |
+          echo "matrix=$(jq -c . .github/build-matrix.json)" >> "$GITHUB_OUTPUT"
   checks:
     needs: plan
     uses: ./.github/workflows/ci.yml
-
   build:
-    needs: [plan, checks]
-    uses: ./.github/workflows/build.yml
-    with:
-      channel: stable
-      version: ${{ needs.plan.outputs.version }}
-
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}${{ matrix.format && '-' || '' }}${{ matrix.format || '' }}
+    needs:
+      - plan
+      - checks
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/package
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          arch: ${{ matrix.arch }}
+          format: ${{ matrix.format || '' }}
   assemble:
-    needs: [plan, build]
-    uses: ./.github/workflows/publish.yml
+    needs:
+      - plan
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      title: ${{ steps.assemble.outputs.title }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: assemble
+        uses: ./.github/actions/assemble-release
+        with:
+          channel: stable
+          version: ${{ needs.plan.outputs.version }}
+          tag: ${{ needs.plan.outputs.tag }}
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs:
+      - plan
+      - assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
-    with:
-      channel: stable
-      version: ${{ needs.plan.outputs.version }}
-      tag: ${{ needs.plan.outputs.tag }}
-      draft: true
-      publish: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    concurrency:
+      group: publish-${{ needs.plan.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/publish-release
+        with:
+          channel: stable
+          tag: ${{ needs.plan.outputs.tag }}
+          title: ${{ needs.assemble.outputs.title }}
+          draft: 'true'

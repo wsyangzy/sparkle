@@ -8,9 +8,10 @@
 | `release.yml` | `vX.Y.Z` 或 `X.Y.Z` 标签 push                    | 检查、15 个安装包、统一校验、Draft Release；检查草稿后手动公开                         |
 | `release.yml` | 手动执行，可选 `version`                         | 同样的检查与打包，仅保存 Actions artifacts，不创建标签或 Release                       |
 | `nightly.yml` | 每天 18:00 UTC（北京时间次日 02:00），或手动执行 | 更新固定 `nightly` 标签和预发布，不成为 Latest                                         |
-| `rolling.yml` | 手动执行                                         | 保留固定 `rolling` 标签及已有通道的兼容入口                                            |
 
-原来的月底自动正式发版、版本回写默认分支和 push 自动发布 Rolling 已移除。AUR 保留独立入口，本流程不自动调用 AUR，也不需要 AUR SSH key、翻译 API 或额外 PAT。发布使用仓库自带的 `GITHUB_TOKEN`，只有发布 job 申请 `contents: write`。
+`.github/workflows` 仅保留 CI、Release、Nightly 三个入口。打包、产物汇总和发布步骤复用 `.github/actions/` 中的本地 composite actions，构建矩阵保存在 `.github/build-matrix.json`，不会增加独立 Workflow 入口。
+
+原来的月底自动正式发版、版本回写默认分支、Rolling、AUR 和 Review Issues 工作流已移除。不需要 AUR SSH key、翻译 API 或额外 PAT。发布使用仓库自带的 `GITHUB_TOKEN`，只有发布 job 申请 `contents: write`。
 
 ## 产物与版本
 
@@ -19,6 +20,7 @@
 - Linux x64 / arm64 / loong64：DEB、RPM、Pacman，共 9 个包。
 - 汇总时核对 15 个包的文件名与非空状态，拒绝缺包、额外文件和空包，再生成 `latest.yml`、`release.json`、`checksums.txt`，并验证 SHA-256。
 - 每个矩阵 job 保存 `package-*` artifact；完整产物保存在 `release-bundle`，内含 `release-assets/` 和 `release-notes.md`，保留 14 天。
+- 使用 `ELECTRON_INSTALL_ARCH` 显式传递目标架构，避免 pnpm 生命周期移除 `npm_config_arch` 后误下载宿主机架构的 Electron，涵盖 loong64 与 ARM64 等交叉打包。
 - 正式标签必须与源码 `package.json.version` 完全对应，例如 `1.27.0` 对应 `v1.27.0` 或 `1.27.0`。标签不会修改或提交源码版本。
 - Nightly 使用下一 patch 的预发布版本，如 `1.26.10-nightly.20261015180000.123.1`。时间、运行序号和重试次数区分同一天的多次构建。
 - 定时 Nightly 读取上次完成上传的 `release.json`；源码 SHA 相同则跳过，手动执行始终重新构建。
@@ -30,7 +32,7 @@
 
 Actions 构建通过 `SPARKLE_RELEASE_REPOSITORY` 将当前仓库写入主进程与渲染进程；更新检查、发布页面、下载和 GitHub SHA-256 查询使用同一个仓库。
 
-正式构建与 Nightly 构建的现有 **Rolling** 更新选项指向本仓库 `nightly/latest.yml`，稳定选项指向本仓库最新公开正式版。显式运行 `rolling.yml` 的包，其 Rolling 选项继续指向 `rolling/latest.yml`。已有用户配置字段不变。
+正式构建与 Nightly 构建的现有 **Rolling** 更新选项指向本仓库 `nightly/latest.yml`，稳定选项指向本仓库最新公开正式版。保留已有用户配置字段和旧版本标签的识别，不再单独构建或发布 Rolling。
 
 本地构建未指定环境变量时继续使用上游 `xishang0128/sparkle` 和 `rolling`。本地要生成 fork 的包，可在 PowerShell 中显式设置：
 
