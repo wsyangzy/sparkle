@@ -1,0 +1,81 @@
+name: Publish release
+description: Upload complete packages and metadata to a draft or nightly release.
+inputs:
+  channel:
+    description: Release channel
+    required: true
+  tag:
+    description: Release tag
+    required: true
+  title:
+    description: Release title
+    required: true
+  draft:
+    description: Create a draft release
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: release-bundle
+        path: bundle
+    - name: Verify release checksums
+      run: cd bundle/release-assets && sha256sum --check checksums.txt
+      shell: bash
+    - name: Publish complete release
+      shell: bash
+      run: |
+        set -euo pipefail
+        EXISTING=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+          --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | [.id, .draft, .prerelease] | @tsv")
+        if [[ $(printf '%s\n' "$EXISTING" | sed '/^$/d' | wc -l) -gt 1 ]]; then
+          echo "::error::Multiple releases exist for $RELEASE_TAG; resolve the duplicate drafts first."
+          exit 1
+        fi
+        if [[ -n "$EXISTING" ]]; then
+          read -r _RELEASE_ID IS_DRAFT IS_PRERELEASE <<< "$EXISTING"
+          if [[ "$BUILD_CHANNEL" == stable && "$IS_DRAFT" != true ]]; then
+            echo "::error::Refusing to replace an already published stable release."
+            exit 1
+          fi
+          if [[ "$BUILD_CHANNEL" != stable && "$IS_PRERELEASE" != true ]]; then
+            echo "::error::Refusing to replace a stable release with a prerelease."
+            exit 1
+          fi
+        fi
+
+        if [[ "$BUILD_CHANNEL" != stable ]]; then
+          git push origin "$GITHUB_SHA:refs/tags/$RELEASE_TAG" --force
+        fi
+        if [[ -z "$EXISTING" ]]; then
+          FLAGS=(--verify-tag --title "$RELEASE_TITLE" --notes-file bundle/release-notes.md)
+          if [[ "$DRAFT" == true ]]; then FLAGS+=(--draft); fi
+          if [[ "$BUILD_CHANNEL" != stable ]]; then FLAGS+=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" "${FLAGS[@]}"
+        fi
+
+        # Publish versioned packages before replacing the update manifest. A failed
+        # package upload leaves the previous nightly packages and manifest available.
+        gh release upload "$RELEASE_TAG" bundle/release-assets/sparkle-* --clobber
+        gh release upload "$RELEASE_TAG" bundle/release-assets/checksums.txt --clobber
+        gh release upload "$RELEASE_TAG" bundle/release-assets/latest.yml --clobber
+        gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file bundle/release-notes.md
+        if [[ "$BUILD_CHANNEL" != stable ]]; then
+          gh release edit "$RELEASE_TAG" --prerelease --latest=false
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/release-assets.txt"
+          while IFS= read -r name; do
+            if [[ ! -f "bundle/release-assets/$name" ]]; then
+              gh release delete-asset "$RELEASE_TAG" "$name" --yes
+            fi
+          done < "$RUNNER_TEMP/release-assets.txt"
+        fi
+        # Record completion last so a failed publication remains eligible for retry.
+        gh release upload "$RELEASE_TAG" bundle/release-assets/release.json --clobber
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TAG: ${{ inputs.tag }}
+        RELEASE_TITLE: ${{ inputs.title }}
+        BUILD_CHANNEL: ${{ inputs.channel }}
+        DRAFT: ${{ inputs.draft }}

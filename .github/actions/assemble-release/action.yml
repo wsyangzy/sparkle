@@ -1,0 +1,68 @@
+name: Assemble release
+description: Validate all packages and generate release metadata and checksums.
+inputs:
+  channel:
+    description: Release channel
+    required: true
+  version:
+    description: Release version
+    required: true
+  tag:
+    description: Release tag
+    required: true
+outputs:
+  title:
+    description: Release title
+    value: ${{ steps.metadata.outputs.title }}
+runs:
+  using: composite
+  steps:
+    - name: Configure build environment
+      shell: bash
+      env:
+        SKIP_PREPARE: '1'
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_TAG: ${{ inputs.tag }}
+        BUILD_CHANNEL: ${{ inputs.channel }}
+      run: |
+        {
+          echo "SKIP_PREPARE=$SKIP_PREPARE"
+          echo "RELEASE_VERSION=$RELEASE_VERSION"
+          echo "RELEASE_TAG=$RELEASE_TAG"
+          echo "BUILD_CHANNEL=$BUILD_CHANNEL"
+        } >> "$GITHUB_ENV"
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash
+    - uses: actions/download-artifact@v8
+      with:
+        pattern: sparkle-*
+        path: release-assets
+        merge-multiple: true
+    - name: Generate release notes and validate all packages
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        PREVIOUS=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --match '[0-9]*.[0-9]*.[0-9]*' HEAD^ 2>/dev/null || true)
+        if [[ -n "$PREVIOUS" ]]; then
+          git log "$PREVIOUS..HEAD" --format='- %s (%h)' > changelog.md
+        else
+          git log -20 --format='- %s (%h)' > changelog.md
+        fi
+        node scripts/release-artifacts.mjs
+        (cd release-assets && sha256sum --check checksums.txt)
+        echo "title=$BUILD_CHANNEL $RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+        cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@v7
+      with:
+        name: release-bundle
+        path: |
+          release-assets/
+          release-notes.md
+        if-no-files-found: error
+        retention-days: 14
