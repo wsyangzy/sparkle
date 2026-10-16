@@ -24,7 +24,7 @@ const DNSCard: React.FC<Props> = (props) => {
   const { iconOnly, expanded } = props
   const { dnsCardStatus = 'col-span-1', disableAnimation = false } = appConfig || {}
   const location = useLocation()
-  const match = controlDns && location.pathname.includes('/dns')
+  const match = location.pathname.includes('/dns')
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
   const { dns, tun } = controledMihomoConfig || {}
   const { enable = true } = dns || {}
@@ -45,8 +45,7 @@ const DNSCard: React.FC<Props> = (props) => {
     transition,
     isDragging
   } = useSortable({
-    id: 'dns',
-    disabled: !controlDns
+    id: 'dns'
   })
   const transform = tf ? { x: tf.x, y: tf.y, scaleX: 1, scaleY: 1 } : null
   const onChange = async (enable: boolean): Promise<void> => {
@@ -73,8 +72,6 @@ const DNSCard: React.FC<Props> = (props) => {
         route="/dns"
         icon={<LuServer className="text-[20px]" />}
         expanded={expanded}
-        isDisabled={!controlDns}
-        disabledReason={!controlDns ? disabledReason : undefined}
       >
         {dnsSwitch}
       </SiderItem>
@@ -84,7 +81,6 @@ const DNSCard: React.FC<Props> = (props) => {
   return (
     <div
       ref={setNodeRef}
-      aria-disabled={!controlDns || undefined}
       title={!controlDns ? disabledReason : undefined}
       style={{
         position: 'relative',
@@ -92,15 +88,15 @@ const DNSCard: React.FC<Props> = (props) => {
         transition,
         zIndex: isDragging ? 'calc(infinity)' : undefined
       }}
-      className={`${dnsCardStatus} dns-card ${!controlDns ? 'cursor-not-allowed opacity-50' : ''}`}
+      className={`${dnsCardStatus} dns-card`}
     >
       <Card
         {...attributes}
         {...listeners}
-        tabIndex={!controlDns ? -1 : 0}
+        tabIndex={0}
         className={[
           'w-full',
-          `${match ? 'bg-primary' : controlDns ? 'hover:bg-primary/30' : ''} ${isDragging ? `${disableAnimation ? '' : 'scale-[0.95]'} tap-highlight-transparent` : ''}`
+          `${match ? 'bg-primary' : 'hover:bg-primary/30'} ${isDragging ? `${disableAnimation ? '' : 'scale-[0.95]'} tap-highlight-transparent` : ''}`
         ]
           .filter(Boolean)
           .join(' ')}
