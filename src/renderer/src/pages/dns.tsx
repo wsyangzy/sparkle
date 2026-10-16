@@ -9,8 +9,9 @@ import { useControledMihomoConfig } from '@renderer/hooks/use-controled-mihomo-c
 import { useAppConfig } from '@renderer/hooks/use-app-config'
 import { useProfileConfig } from '@renderer/hooks/use-profile-config'
 import { isDnsControlled } from '../../../shared/dns-control'
-import { restartCore } from '@renderer/utils/ipc'
-import React, { Key, useState } from 'react'
+import { getRuntimeConfig, restartCore } from '@renderer/utils/ipc'
+import React, { Key, useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { notify } from '@renderer/utils/notification'
 import {
   isValidIPv4Cidr,
@@ -19,31 +20,29 @@ import {
   isValidDnsServer
 } from '@renderer/utils/validate'
 
-const DNS: React.FC = () => {
-  const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig()
-  const { appConfig, patchAppConfig } = useAppConfig()
-  const { profileConfig } = useProfileConfig()
-  const controlDns = isDnsControlled(appConfig, profileConfig)
-  const { hosts } = appConfig || {}
-  const { dns } = controledMihomoConfig || {}
+interface DNSSettingsProps {
+  config: Partial<MihomoConfig>
+  hosts?: IHost[]
+  readOnly?: boolean
+}
+
+const DNSSettings: React.FC<DNSSettingsProps> = ({ config, hosts, readOnly = false }) => {
+  const { patchControledMihomoConfig } = useControledMihomoConfig()
+  const { patchAppConfig } = useAppConfig()
+  const { dns } = config
   const {
     ipv6 = false,
-    'fake-ip-range': fakeIPRange = '198.18.0.1/16',
+    'fake-ip-range': fakeIPRange = readOnly ? '' : '198.18.0.1/16',
     'fake-ip-range6': fakeIPRange6 = '',
-    'fake-ip-filter': fakeIPFilter = [
-      '*',
-      '+.lan',
-      '+.local',
-      'time.*.com',
-      'ntp.*.com',
-      '+.market.xiaomi.com'
-    ],
-    'enhanced-mode': enhancedMode = 'fake-ip',
+    'fake-ip-filter': fakeIPFilter = readOnly
+      ? []
+      : ['*', '+.lan', '+.local', 'time.*.com', 'ntp.*.com', '+.market.xiaomi.com'],
+    'enhanced-mode': enhancedMode = readOnly ? 'normal' : 'fake-ip',
     'use-hosts': useHosts = false,
     'use-system-hosts': useSystemHosts = false,
     'respect-rules': respectRules = false,
-    'default-nameserver': defaultNameserver = ['tls://223.5.5.5'],
-    nameserver = ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
+    'default-nameserver': defaultNameserver = readOnly ? [] : ['tls://223.5.5.5'],
+    nameserver = readOnly ? [] : ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
     'proxy-server-nameserver': proxyServerNameserver = [],
     'direct-nameserver': directNameserver = [],
     'nameserver-policy': nameserverPolicy = {},
@@ -94,12 +93,13 @@ const DNS: React.FC = () => {
   const hasDnsErrors = Boolean(defaultNameserverError || nameserverError || advancedDnsError)
 
   const setValues = (v: typeof values): void => {
+    if (readOnly) return
     originSetValues(v)
     setChanged(true)
   }
 
   const onSave = async (patch: Partial<MihomoConfig>): Promise<void> => {
-    if (!controlDns) return
+    if (readOnly) return
     await patchAppConfig({
       hosts: values.hosts
     })
@@ -112,30 +112,12 @@ const DNS: React.FC = () => {
     }
   }
 
-  if (!controlDns) {
-    return (
-      <BasePage title="DNS 设置">
-        <SettingCard>
-          <div role="status" className="space-y-2 px-2 py-3">
-            <p className="font-medium">
-              {appConfig?.controlDns === false ? '全局 DNS 接管已关闭' : '当前订阅不接管 DNS'}
-            </p>
-            <p className="text-sm text-foreground/60">
-              当前使用订阅及覆写中的 DNS 和 hosts 配置，请在对应订阅或覆写中修改。
-              如需使用应用的公共 DNS 设置，请开启全局“接管 DNS 设置”，并关闭此订阅的“当前订阅不接管
-              DNS”选项。
-            </p>
-          </div>
-        </SettingCard>
-      </BasePage>
-    )
-  }
-
   return (
     <BasePage
       title="DNS 设置"
       contentClassName="no-scrollbar"
       header={
+        !readOnly &&
         changed && (
           <Button
             size="sm"
@@ -187,6 +169,7 @@ const DNS: React.FC = () => {
           <Switch
             size="sm"
             isSelected={values.ipv6}
+            isDisabled={readOnly}
             onChange={(v) => {
               setValues({ ...values, ipv6: v })
             }}
@@ -201,6 +184,7 @@ const DNS: React.FC = () => {
         </SettingItem>
         <SettingItem compatKey="legacy" title="域名映射模式" divider>
           <Tabs
+            isDisabled={readOnly}
             selectedKey={values.enhancedMode}
             onSelectionChange={(key: Key) => setValues({ ...values, enhancedMode: key as DnsMode })}
             data-color="primary"
@@ -228,9 +212,10 @@ const DNS: React.FC = () => {
         {values.enhancedMode === 'fake-ip' && (
           <>
             <SettingItem compatKey="legacy" title="虚假 IP 范围 (IPv4)" divider>
-              <Tooltip isOpen={!!fakeIPRangeError} delay={0}>
+              <Tooltip isOpen={!readOnly && !!fakeIPRangeError} delay={0}>
                 <Tooltip.Trigger className="block w-[40%]">
                   <Input
+                    readOnly={readOnly}
                     placeholder="例：198.18.0.1/16"
                     value={values.fakeIPRange}
                     onChange={(event) => {
@@ -240,7 +225,9 @@ const DNS: React.FC = () => {
                       setFakeIPRangeError(r.ok ? null : (r.error ?? '格式错误'))
                     }}
                     className={
-                      fakeIPRangeError ? 'border-red-500 ring-1 ring-red-500 rounded-lg' : ''
+                      !readOnly && fakeIPRangeError
+                        ? 'border-red-500 ring-1 ring-red-500 rounded-lg'
+                        : ''
                     }
                     fullWidth
                   />
@@ -253,9 +240,10 @@ const DNS: React.FC = () => {
             </SettingItem>
             {values.ipv6 && (
               <SettingItem compatKey="legacy" title="虚假 IP 范围 (IPv6)" divider>
-                <Tooltip isOpen={!!fakeIPRange6Error} delay={0}>
+                <Tooltip isOpen={!readOnly && !!fakeIPRange6Error} delay={0}>
                   <Tooltip.Trigger className="block w-[40%]">
                     <Input
+                      readOnly={readOnly}
                       placeholder="例：fc00::/18"
                       value={values.fakeIPRange6}
                       onChange={(event) => {
@@ -265,7 +253,9 @@ const DNS: React.FC = () => {
                         setFakeIPRange6Error(r.ok ? null : (r.error ?? '格式错误'))
                       }}
                       className={
-                        fakeIPRange6Error ? 'border-red-500 ring-1 ring-red-500 rounded-lg' : ''
+                        !readOnly && fakeIPRange6Error
+                          ? 'border-red-500 ring-1 ring-red-500 rounded-lg'
+                          : ''
                       }
                       fullWidth
                     />
@@ -283,6 +273,7 @@ const DNS: React.FC = () => {
               </SettingItem>
             )}
             <EditableList
+              readOnly={readOnly}
               title="虚假 IP 过滤器"
               items={values.fakeIPFilter}
               validate={(part) => isValidDomainWildcard(part as string)}
@@ -299,6 +290,7 @@ const DNS: React.FC = () => {
           </>
         )}
         <EditableList
+          readOnly={readOnly}
           title="基础服务器"
           items={values.defaultNameserver}
           validate={(part) => isValidDnsServer(part as string, true)}
@@ -313,6 +305,7 @@ const DNS: React.FC = () => {
           placeholder="例：223.5.5.5"
         />
         <EditableList
+          readOnly={readOnly}
           title="默认解析服务器"
           items={values.nameserver}
           validate={(part) => isValidDnsServer(part as string)}
@@ -329,6 +322,7 @@ const DNS: React.FC = () => {
         />
       </SettingCard>
       <AdvancedDnsSetting
+        readOnly={readOnly}
         respectRules={values.respectRules}
         directNameserver={values.directNameserver}
         proxyServerNameserver={values.proxyServerNameserver}
@@ -366,6 +360,62 @@ const DNS: React.FC = () => {
         onErrorChange={setAdvancedDnsError}
       />
     </BasePage>
+  )
+}
+
+const ReadOnlyDNS: React.FC = () => {
+  const { appConfig } = useAppConfig()
+  const { profileConfig } = useProfileConfig()
+  const {
+    data: config,
+    error,
+    isLoading,
+    mutate
+  } = useSWR(['dnsRuntimeConfig', profileConfig, appConfig], getRuntimeConfig)
+
+  useEffect(() => {
+    return window.electron.ipcRenderer.on('core-started', () => {
+      void mutate()
+    })
+  }, [mutate])
+
+  if (isLoading || error || !config) {
+    return (
+      <BasePage title="DNS 设置">
+        <SettingCard>
+          <div role="status" className="space-y-2 px-2 py-3 text-sm">
+            {isLoading ? '正在读取当前 DNS 配置...' : '当前 DNS 配置读取失败，请重试。'}
+            {!isLoading && (
+              <Button size="sm" onPress={() => void mutate()}>
+                重试
+              </Button>
+            )}
+          </div>
+        </SettingCard>
+      </BasePage>
+    )
+  }
+
+  // Recreate form state when the subscription or its generated DNS configuration changes.
+  return (
+    <DNSSettings
+      key={JSON.stringify({ dns: config.dns, hosts: config.hosts })}
+      config={config}
+      hosts={Object.entries(config.hosts ?? {}).map(([domain, value]) => ({ domain, value }))}
+      readOnly
+    />
+  )
+}
+
+const DNS: React.FC = () => {
+  const { appConfig } = useAppConfig()
+  const { profileConfig } = useProfileConfig()
+  const { controledMihomoConfig } = useControledMihomoConfig()
+
+  return isDnsControlled(appConfig, profileConfig) ? (
+    <DNSSettings config={controledMihomoConfig ?? {}} hosts={appConfig?.hosts} />
+  ) : (
+    <ReadOnlyDNS />
   )
 }
 

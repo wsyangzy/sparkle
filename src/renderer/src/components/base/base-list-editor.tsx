@@ -22,6 +22,7 @@ interface EditableListProps {
   }
   format?: (part1: string, part2?: string) => string
   disableFirst?: boolean
+  readOnly?: boolean
   divider?: boolean
   objectMode?: 'keyValue' | 'array' | 'record'
   validate?: (part1: string, part2?: string) => boolean | ValidationResult
@@ -38,6 +39,7 @@ const EditableList: React.FC<EditableListProps> = ({
   parse,
   format,
   disableFirst = false,
+  readOnly = false,
   divider = true,
   objectMode,
   validate,
@@ -76,6 +78,7 @@ const EditableList: React.FC<EditableListProps> = ({
   const displayed = [...processedItems, extra]
 
   const handleUpdate = (idx: number, part1: string, part2?: string): void => {
+    if (readOnly) return
     const isEmpty = !part1.trim() && (!part2 || !part2.trim())
 
     if (idx < processedItems.length && isEmpty) {
@@ -134,7 +137,11 @@ const EditableList: React.FC<EditableListProps> = ({
 
           // 整体验证（向后兼容）
           const rawValidation =
-            isExtra || isEmpty ? true : validate ? validate(entry.part1, entry.part2) : true
+            readOnly || isExtra || isEmpty
+              ? true
+              : validate
+                ? validate(entry.part1, entry.part2)
+                : true
           const validation: ValidationResult =
             typeof rawValidation === 'boolean'
               ? { ok: rawValidation, error: rawValidation ? undefined : '格式错误' }
@@ -142,7 +149,7 @@ const EditableList: React.FC<EditableListProps> = ({
 
           // part1 单独验证
           const rawValidation1 =
-            isExtra || !entry.part1.trim()
+            readOnly || isExtra || !entry.part1.trim()
               ? true
               : validatePart1
                 ? validatePart1(entry.part1)
@@ -154,7 +161,7 @@ const EditableList: React.FC<EditableListProps> = ({
 
           // part2 单独验证
           const rawValidation2 =
-            isExtra || !entry.part2?.trim()
+            readOnly || isExtra || !entry.part2?.trim()
               ? true
               : validatePart2
                 ? validatePart2(entry.part2)
@@ -178,6 +185,7 @@ const EditableList: React.FC<EditableListProps> = ({
                     <Tooltip isOpen={!part1Valid} delay={0}>
                       <Tooltip.Trigger className="block w-full">
                         <Input
+                          readOnly={readOnly}
                           disabled={disabled}
                           placeholder={placeholder}
                           value={entry.part1}
@@ -207,6 +215,7 @@ const EditableList: React.FC<EditableListProps> = ({
                     <Tooltip isOpen={!part2Valid} delay={0}>
                       <Tooltip.Trigger className="block w-full">
                         <Input
+                          readOnly={readOnly}
                           disabled={disabled}
                           placeholder={part2Placeholder}
                           value={entry.part2 || ''}
@@ -236,6 +245,7 @@ const EditableList: React.FC<EditableListProps> = ({
                 <Tooltip isOpen={!part1Valid} delay={0}>
                   <Tooltip.Trigger className="min-w-0 flex-1">
                     <Input
+                      readOnly={readOnly}
                       disabled={disabled}
                       placeholder={placeholder}
                       value={entry.part1}
@@ -262,6 +272,7 @@ const EditableList: React.FC<EditableListProps> = ({
                 <Button
                   size="sm"
                   className="shrink-0"
+                  isDisabled={readOnly}
                   onPress={() => handleUpdate(idx, '', '')}
                   variant="secondary"
                   data-color="warning"

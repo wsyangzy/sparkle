@@ -6,6 +6,7 @@ import EditableList from '../base/base-list-editor'
 import { isValidDnsServer, isValidDomainWildcard } from '@renderer/utils/validate'
 
 interface AdvancedDnsSettingProps {
+  readOnly?: boolean
   respectRules: boolean
   directNameserver: string[]
   proxyServerNameserver: string[]
@@ -26,6 +27,7 @@ interface AdvancedDnsSettingProps {
 }
 
 const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
+  readOnly = false,
   respectRules,
   directNameserver,
   proxyServerNameserver,
@@ -74,7 +76,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
         <Switch
           size="sm"
           isSelected={respectRules}
-          isDisabled={proxyServerNameserver.length === 0}
+          isDisabled={readOnly || proxyServerNameserver.length === 0}
           onChange={onRespectRulesChange}
           aria-label="连接遵守规则"
         >
@@ -86,6 +88,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
         </Switch>
       </SettingItem>
       <EditableList
+        readOnly={readOnly}
         title="直连解析服务器"
         items={directNameserver}
         validate={(part) => isValidDnsServer(part as string)}
@@ -100,6 +103,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
         placeholder="例：tls://dns.alidns.com"
       />
       <EditableList
+        readOnly={readOnly}
         title="代理节点解析服务器"
         items={proxyServerNameserver}
         validate={(part) => isValidDnsServer(part as string)}
@@ -115,6 +119,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
       />
       {proxyServerNameserver.length > 0 && (
         <EditableList
+          readOnly={readOnly}
           title="代理节点解析策略"
           items={proxyServerNameserverPolicy}
           validate={(part1) => isValidDomainWildcard(part1)}
@@ -175,6 +180,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
         />
       )}
       <EditableList
+        readOnly={readOnly}
         title="域名解析策略"
         items={nameserverPolicy}
         validatePart1={(part1) => isValidDomainWildcard(part1)}
@@ -235,6 +241,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
         <Switch
           size="sm"
           isSelected={useSystemHosts}
+          isDisabled={readOnly}
           onChange={onUseSystemHostsChange}
           aria-label="使用系统 Hosts"
         >
@@ -249,6 +256,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
         <Switch
           size="sm"
           isSelected={useHosts}
+          isDisabled={readOnly}
           onChange={onUseHostsChange}
           aria-label="自定义 Hosts"
         >
@@ -261,6 +269,7 @@ const AdvancedDnsSetting: React.FC<AdvancedDnsSettingProps> = ({
       </SettingItem>
       {useHosts && (
         <EditableList
+          readOnly={readOnly}
           items={hosts ? Object.fromEntries(hosts.map((h) => [h.domain, h.value])) : {}}
           validatePart1={(part1) => isValidDomainWildcard(part1)}
           onChange={(rec) => {
