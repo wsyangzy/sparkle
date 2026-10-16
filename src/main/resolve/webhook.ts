@@ -334,6 +334,8 @@ const operations: Record<WebhookCategory, string[]> = {
     'setupFirewall'
   ],
   tools: [
+    'localBackup',
+    'localRestore',
     'webdavBackup',
     'webdavRestore',
     'webdavDelete',
