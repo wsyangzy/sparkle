@@ -39,6 +39,7 @@ function loadSource(relativePath, dependencies = {}, globals = {}) {
 const yaml = loadSource('../src/main/utils/yaml.ts')
 const merge = loadSource('../src/main/utils/merge.ts')
 const dnsControl = loadSource('../src/shared/dns-control.ts')
+const profileInterval = loadSource('../src/main/utils/profileInterval.ts')
 const template = loadSource('../src/main/utils/template.ts', {
   '../../shared/build-flags': { systemCoreOnlyBuild: false }
 })
@@ -135,7 +136,8 @@ function createEnvironment(t, { overrides = [], beforeDownload } = {}) {
     '../utils/userAgent': { getUserAgent: async () => 'profile-dns-test' },
     '../utils/elevation': {},
     '../utils/age': { isAgeEncryptedText: () => false },
-    '../utils/url': loadSource('../src/main/utils/url.ts')
+    '../utils/url': loadSource('../src/main/utils/url.ts'),
+    '../utils/profileInterval': profileInterval
   })
   controlled = loadSource('../src/main/config/controledMihomo.ts', {
     ...commonDependencies,
@@ -284,9 +286,14 @@ test('remote subscription refresh persists opt-out across configuration reloads'
 test('existing automatic update timers preserve DNS choices saved after scheduling', async (t) => {
   const env = createEnvironment(t)
   const callbacks = []
+  const updateFailures = []
   const updater = loadSource(
     '../src/main/core/profileUpdater.ts',
-    { '../config': env.profile },
+    {
+      '../config/profile': env.profile,
+      '../utils/log': { appendAppLog: async (content) => updateFailures.push(content) },
+      '../utils/profileInterval': profileInterval
+    },
     {
       setTimeout: (callback) => {
         callbacks.push(callback)
@@ -317,6 +324,8 @@ test('existing automatic update timers preserve DNS choices saved after scheduli
     )
   }
 
+  // Finished updates reschedule themselves; keep only the timer created by addProfileUpdater.
+  callbacks.length = 0
   await updater.addProfileUpdater(await env.profile.getCurrentProfileItem())
   assert.equal(callbacks.length, 1)
   await env.profile.updateProfileItem({
@@ -325,6 +334,7 @@ test('existing automatic update timers preserve DNS choices saved after scheduli
   })
   await callbacks[0]()
   assert.equal((await env.profile.getCurrentProfileItem()).disableDnsControl, false)
+  assert.deepEqual(updateFailures, [], 'Scheduled updates must not fail silently')
 })
 
 test('saving a DNS choice during a subscription download wins over the old update data', async (t) => {
